@@ -1,7 +1,15 @@
 const express = require('express');
+const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+app.use(express.static('public'));
+
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
 const DEFAULT_PROVINCE = 'กรุงเทพมหานคร';
 const geocodeCache = new Map();
 const PROVINCE_ALIASES = {
@@ -18,8 +26,6 @@ const PROVINCE_ALIASES = {
   'พระนครศรีอยุธยา': 'Phra Nakhon Si Ayutthaya',
   'อ่างทอง': 'Ang Thong',
 };
-
-app.use(express.static('public'));
 
 function encodeQuery(params) {
   return new URLSearchParams(params).toString();
