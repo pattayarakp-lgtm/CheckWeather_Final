@@ -5,13 +5,15 @@ const weatherCodes = {
 const favoriteStorageKey = 'weatherFavoriteProvinces';
 let provinceNames = [];
 let favoriteProvinces = loadFavoriteProvinces();
+let weatherLoading = false;
+let activeProvinceSuggestion = -1;
 
 async function loadProvinces() {
   const response = await fetch('/provinces');
   const data = await response.json();
   provinceNames = data.provinces;
   favoriteProvinces = favoriteProvinces.filter(name => provinceNames.includes(name));
-  renderProvinceOptions(favoriteProvinces[0] || 'กรุงเทพมหานคร');
+  renderProvinceOptions('');
 }
 
 function loadFavoriteProvinces() {
@@ -23,31 +25,122 @@ function loadFavoriteProvinces() {
   }
 }
 
-function renderProvinceOptions(selectedProvince) {
-  const select = document.getElementById('province');
+function getProvinceSuggestions(query) {
   const orderedProvinces = [
     ...favoriteProvinces,
     ...provinceNames.filter(name => !favoriteProvinces.includes(name)),
   ];
+  const normalizedQuery = query.trim().toLocaleLowerCase('th');
+  if (!normalizedQuery) return orderedProvinces.slice(0, 8);
 
-  select.replaceChildren(...orderedProvinces.map(name => new Option(
-    favoriteProvinces.includes(name) ? `★ ${name}` : name,
-    name,
-  )));
-  if (orderedProvinces.includes(selectedProvince)) select.value = selectedProvince;
-  updateFavoriteButton();
+  const matchingProvinces = orderedProvinces.filter(name =>
+    name.toLocaleLowerCase('th').includes(normalizedQuery)
+  );
+  return [
+    ...matchingProvinces.filter(name =>
+      name.toLocaleLowerCase('th').startsWith(normalizedQuery)
+    ),
+    ...matchingProvinces.filter(name =>
+      !name.toLocaleLowerCase('th').startsWith(normalizedQuery)
+    ),
+  ].slice(0, 8);
 }
 
-function updateFavoriteButton() {
+function renderProvinceOptions(selectedProvince, query = '', show = false) {
+  const input = document.getElementById('province');
+  const suggestions = document.getElementById('province-options');
+  const provinceSuggestions = getProvinceSuggestions(query);
+  suggestions.replaceChildren(...provinceSuggestions.map((name, index) => {
+    const option = document.createElement('button');
+    option.id = `province-option-${index}`;
+    option.type = 'button';
+    option.className = `province-suggestion${activeProvinceSuggestion === index ? ' is-active' : ''}`;
+    option.setAttribute('role', 'option');
+    option.tabIndex = -1;
+    option.setAttribute('aria-selected', String(activeProvinceSuggestion === index));
+
+    const provinceName = document.createElement('span');
+    provinceName.className = 'province-suggestion__name';
+    provinceName.textContent = name;
+    option.append(provinceName);
+
+    if (favoriteProvinces.includes(name)) {
+      const favorite = document.createElement('span');
+      favorite.className = 'province-suggestion__favorite';
+      favorite.textContent = '★ โปรด';
+      option.append(favorite);
+    }
+
+    option.addEventListener('click', () => {
+      input.value = name;
+      activeProvinceSuggestion = -1;
+      renderProvinceOptions(undefined, name);
+    });
+    return option;
+  }));
+  suggestions.hidden = !show || provinceSuggestions.length === 0;
+  input.setAttribute('aria-expanded', String(!suggestions.hidden));
+  if (activeProvinceSuggestion >= 0 && !suggestions.hidden) {
+    input.setAttribute('aria-activedescendant', `province-option-${activeProvinceSuggestion}`);
+  } else {
+    input.removeAttribute('aria-activedescendant');
+  }
+  if (provinceNames.includes(selectedProvince)) input.value = selectedProvince;
+  updateProvinceControls();
+}
+
+function updateProvinceControls() {
   const isFavorite = favoriteProvinces.includes(document.getElementById('province').value);
+  const isValidProvince = provinceNames.includes(document.getElementById('province').value);
   const button = document.getElementById('favoriteButton');
   button.textContent = isFavorite ? '★ Favorite แล้ว' : '☆ เพิ่ม Favorite';
   button.setAttribute('aria-pressed', String(isFavorite));
+  button.disabled = weatherLoading || !isValidProvince;
+  document.getElementById('searchButton').disabled = weatherLoading || !isValidProvince;
 }
 
-document.getElementById('province').addEventListener('change', event => {
-  updateFavoriteButton();
-  loadWeather(event.target.value);
+document.getElementById('province').addEventListener('input', () => {
+  activeProvinceSuggestion = -1;
+  renderProvinceOptions(undefined, document.getElementById('province').value, true);
+  updateProvinceControls();
+});
+document.getElementById('province').addEventListener('focus', () => {
+  activeProvinceSuggestion = -1;
+  renderProvinceOptions(undefined, document.getElementById('province').value, true);
+});
+document.getElementById('province').addEventListener('keydown', event => {
+  const query = document.getElementById('province').value;
+  const provinceSuggestions = getProvinceSuggestions(query);
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    if (provinceSuggestions.length === 0) return;
+    event.preventDefault();
+    activeProvinceSuggestion = event.key === 'ArrowDown'
+      ? (activeProvinceSuggestion + 1) % provinceSuggestions.length
+      : (activeProvinceSuggestion <= 0 ? provinceSuggestions.length - 1 : activeProvinceSuggestion - 1);
+    renderProvinceOptions(undefined, query, true);
+  } else if (event.key === 'Enter' && !document.getElementById('province-options').hidden) {
+    if (activeProvinceSuggestion >= 0) {
+      event.preventDefault();
+      const selectedProvince = provinceSuggestions[activeProvinceSuggestion];
+      document.getElementById('province').value = selectedProvince;
+      activeProvinceSuggestion = -1;
+      renderProvinceOptions(undefined, selectedProvince);
+    } else if (provinceNames.includes(query)) {
+      event.preventDefault();
+      document.getElementById('province-options').hidden = true;
+      document.getElementById('province').setAttribute('aria-expanded', 'false');
+      loadWeather(query);
+    }
+  } else if (event.key === 'Escape') {
+    activeProvinceSuggestion = -1;
+    renderProvinceOptions(undefined, query);
+  }
+});
+document.getElementById('province-field').addEventListener('focusout', event => {
+  if (!event.currentTarget.contains(event.relatedTarget)) {
+    activeProvinceSuggestion = -1;
+    renderProvinceOptions(undefined, document.getElementById('province').value);
+  }
 });
 document.getElementById('searchForm').addEventListener('submit', event => {
   event.preventDefault();
@@ -66,12 +159,17 @@ document.getElementById('favoriteButton').addEventListener('click', () => {
     favoriteProvinces.unshift(selectedProvince);
   }
   localStorage.setItem(favoriteStorageKey, JSON.stringify(favoriteProvinces));
-  renderProvinceOptions(selectedProvince);
+  activeProvinceSuggestion = -1;
+  renderProvinceOptions(selectedProvince, selectedProvince);
 });
 
 async function loadWeather(province = 'กรุงเทพมหานคร') {
-  const button = document.getElementById('searchButton');
-  button.disabled = true;
+  if (!provinceNames.includes(province)) {
+    showError('กรุณาเลือกจังหวัดจากรายการแนะนำ');
+    return;
+  }
+  weatherLoading = true;
+  updateProvinceControls();
   showError('');
   try {
     const response = await fetch(`/weather?province=${encodeURIComponent(province)}`);
@@ -79,7 +177,10 @@ async function loadWeather(province = 'กรุงเทพมหานคร')
     if (!response.ok) throw new Error(data.error || 'โหลดข้อมูลไม่สำเร็จ');
     renderWeather(data);
   } catch (error) { showError(error.message); }
-  finally { button.disabled = false; }
+  finally {
+    weatherLoading = false;
+    updateProvinceControls();
+  }
 }
 
 function renderWeather(data) {
@@ -134,4 +235,4 @@ function updateWeatherScene(current, nextRain) {
 
 function showError(message) { const error = document.getElementById('error'); error.textContent = message; error.style.display = message ? 'block' : 'none'; }
 
-loadProvinces().then(() => loadWeather(document.getElementById('province').value)).catch(error => showError(error.message));
+loadProvinces().catch(error => showError(error.message));
