@@ -2,7 +2,7 @@
 function ForecastCard({ daily }) {
   return (
     <section className="panel panel-spaced">
-      <h2>พยากรณ์ 2 วัน</h2>
+      <h2>พยากรณ์ 2 วัน</h2> 
 
       <div className="forecast">
         {daily.time.map((date, index) => (
