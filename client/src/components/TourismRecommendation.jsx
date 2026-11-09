@@ -253,7 +253,7 @@ function TourismRecommendation({ province, weather, weatherCodes }) {
                     <div className="tourism-weather__item">
                       <span aria-hidden="true">🌦️</span>
                       <div>
-                        <small>โอกาสฝนวันนี้</small>
+                        <small>โอกาสฝนตกวันนี้</small>
                         <strong>
                           {currentDestinationWeather.data.daily.precipitation_probability_max?.[0] ?? 'ไม่มีข้อมูล'}
                           {currentDestinationWeather.data.daily.precipitation_probability_max?.[0] != null ? '%' : ''}
